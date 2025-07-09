@@ -1,6 +1,8 @@
-
 class Config:
     def __init__(self):
+        """
+        Конфигурация для обучения модели машинного перевода.
+        """
         self.dataset_paths = []
         self.datasets_dir = "datasets/"
         self.model_path = "models/transformer.pt"
@@ -22,4 +24,6 @@ class Config:
         self.min_chars = 2
         self.max_chars = 200
         self.invalid_chars = r'[^\w\s.,!?-]'
-        self.val_split = 0.2  # Added validation split
+        self.val_split = 0.2
+        self.special_tokens = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"]
+        self.tokenizer_type = "BPE"  # Может быть "BPE" или "WordPiece"

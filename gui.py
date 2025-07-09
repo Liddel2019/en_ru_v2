@@ -26,16 +26,19 @@ class GUI:
         self.progress = tk.DoubleVar()
         self.download_queue = queue.Queue()
         self.metric_queue = queue.Queue()
+        self.plot_queue = queue.Queue()  # Очередь для графиков
         self.training_info = tk.StringVar(value="Эпоха: 0/0, Шаг: 0/0, Всего шагов: 0/0")
         self.runs = {}  # Словарь для хранения метрик
         self.current_run_id = None
         self.colors = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'cyan', 'magenta']
+        self.is_running = True  # Флаг для управления root.after
         print(f"===GUI.py===\n{Fore.BLUE}Инициализация интерфейса...{Style.RESET_ALL}")
 
         # Настройка окна
         self.root.resizable(True, True)
         self.root.minsize(800, 600)
         self.root.geometry("1000x700")
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)  # Обработка закрытия окна
 
         # Создание главного фрейма
         self.main_frame = ttk.Frame(self.root, padding="10")
@@ -74,7 +77,16 @@ class GUI:
         # Запуск проверки очередей
         self.check_download_queue()
         self.check_metric_queue()
+        self.check_plot_queue()
         print(f"===GUI.py===\n{Fore.GREEN}Интерфейс успешно инициализирован{Style.RESET_ALL}")
+
+    def on_closing(self):
+        """
+        Обработка закрытия окна.
+        """
+        self.is_running = False  # Останавливаем root.after
+        self.stop_training()
+        self.root.destroy()
 
     def create_training_tab(self):
         """
@@ -260,9 +272,9 @@ class GUI:
             spinbox = ttk.Spinbox(frame, textvariable=var, from_=min_val, to=max_val, increment=increment,
                                   width=15, format=f"%.{decimals}f" if decimals > 0 else "%d", font=("Arial", 10))
             spinbox.grid(row=0, column=1, sticky="e")
-            spinbox.bind("<KeyRelease>", lambda event, p=param, min_v=min_val, max_v=max_val: self.validate_spinbox_input(event, p, min_v, max_v))
-            spinbox.bind("<<Increment>>", lambda event, p=param, min_v=min_val, max_v=max_val: self.validate_spinbox_input(event, p, min_v, max_v))
-            spinbox.bind("<<Decrement>>", lambda event, p=param, min_v=min_val, max_v=max_val: self.validate_spinbox_input(event, p, min_v, max_v))
+            spinbox.bind("<KeyRelease>", lambda event, p=param, min_v=min_val, max_v=max_val: self.validate_spinbox_input(event, p, min_v, max_val))
+            spinbox.bind("<<Increment>>", lambda event, p=param, min_v=min_val, max_v=max_val: self.validate_spinbox_input(event, p, min_v, max_val))
+            spinbox.bind("<<Decrement>>", lambda event, p=param, min_v=min_val, max_v=max_val: self.validate_spinbox_input(event, p, min_v, max_val))
         self.settings_frame.columnconfigure(0, weight=1)
 
     def create_filter_fields(self):
@@ -363,6 +375,8 @@ class GUI:
         """
         Проверка очереди загрузок.
         """
+        if not self.is_running:
+            return
         try:
             while True:
                 dataset_name, success, message = self.download_queue.get_nowait()
@@ -375,12 +389,15 @@ class GUI:
                 self.update_dataset_list()
         except queue.Empty:
             pass
-        self.root.after(100, self.check_download_queue)
+        if self.is_running:
+            self.root.after(100, self.check_download_queue)
 
     def check_metric_queue(self):
         """
         Проверка очереди метрик.
         """
+        if not self.is_running:
+            return
         try:
             while True:
                 metrics = self.metric_queue.get_nowait()
@@ -399,7 +416,38 @@ class GUI:
                 self.log_message(f"Обновлены метрики: Потери (обучение: {metrics['train_loss']:.4f}, валидация: {metrics['val_loss']:.4f}), BLEU: {metrics['bleu']:.4f}, Время: {metrics.get('time', 0):.2f} сек")
         except queue.Empty:
             pass
-        self.root.after(100, self.check_metric_queue)
+        if self.is_running:
+            self.root.after(100, self.check_metric_queue)
+
+    def check_plot_queue(self):
+        """
+        Проверка очереди для создания графиков.
+        """
+        if not self.is_running:
+            return
+        try:
+            while True:
+                run_id, run_data = self.plot_queue.get_nowait()
+                run_dir = f"runs/run_{run_id}"
+                metrics_df = pd.DataFrame(run_data)
+                metrics_df.to_csv(f"{run_dir}/metrics.csv", index_label='epoch')
+                self.log_message(f"Метрики сохранены в {run_dir}/metrics.csv", Fore.GREEN)
+
+                for metric, key in [('Потери на обучении', 'train_loss'), ('Потери на валидации', 'val_loss'), ('BLEU Score', 'bleu'), ('Время обучения', 'time')]:
+                    plt.figure()
+                    plt.plot(range(1, len(run_data[key]) + 1), run_data[key], label=metric, color=self.colors[0])
+                    plt.xlabel("Эпоха")
+                    plt.ylabel(metric)
+                    plt.title(f"{metric} для теста {run_id}")
+                    plt.legend()
+                    plt.grid(True)
+                    plt.savefig(f"{run_dir}/{key}.png")
+                    plt.close()
+                self.log_message(f"Графики сохранены в {run_dir}", Fore.GREEN)
+        except queue.Empty:
+            pass
+        if self.is_running:
+            self.root.after(100, self.check_plot_queue)
 
     def update_test_selection(self):
         """
@@ -425,13 +473,16 @@ class GUI:
             'BLEU Score': 'bleu',
             'Время обучения (сек)': 'time'
         }[metric]
+        has_data = False
         for idx, (run_id, run_data) in enumerate(self.runs.items()):
             if self.test_vars.get(run_id, tk.BooleanVar(value=False)).get() and run_data[metric_key]:
                 self.ax.plot(range(1, len(run_data[metric_key]) + 1), run_data[metric_key], label=f"Тест {run_id}", color=self.colors[idx % len(self.colors)])
+                has_data = True
         self.ax.set_xlabel("Эпоха")
         self.ax.set_ylabel(metric)
         self.ax.set_title(f"{metric} по эпохам")
-        self.ax.legend()
+        if has_data:
+            self.ax.legend()
         self.ax.grid(True)
         self.canvas.draw()
 
@@ -484,21 +535,7 @@ class GUI:
             try:
                 self.trainer.train(self.update_training_progress, self.metric_queue, self.current_run_id)
                 if self.current_run_id in self.runs:
-                    metrics_df = pd.DataFrame(self.runs[self.current_run_id])
-                    metrics_df.to_csv(f"{run_dir}/metrics.csv", index_label='epoch')
-                    self.log_message(f"Метрики сохранены в {run_dir}/metrics.csv", Fore.GREEN)
-
-                    for metric, key in [('Потери на обучении', 'train_loss'), ('Потери на валидации', 'val_loss'), ('BLEU Score', 'bleu'), ('Время обучения', 'time')]:
-                        plt.figure()
-                        plt.plot(range(1, len(self.runs[self.current_run_id][key]) + 1), self.runs[self.current_run_id][key], label=metric, color=self.colors[0])
-                        plt.xlabel("Эпоха")
-                        plt.ylabel(metric)
-                        plt.title(f"{metric} для теста {self.current_run_id}")
-                        plt.legend()
-                        plt.grid(True)
-                        plt.savefig(f"{run_dir}/{key}.png")
-                        plt.close()
-                    self.log_message(f"Графики сохранены в {run_dir}", Fore.GREEN)
+                    self.plot_queue.put((self.current_run_id, self.runs[self.current_run_id]))
             except Exception as e:
                 self.log_message(f"Ошибка обучения: {str(e)}", Fore.RED)
 
@@ -664,7 +701,6 @@ class GUI:
             if not text:
                 messagebox.showwarning("Предупреждение", "Введите текст для перевода!")
                 self.log_message("Предупреждение: Текст для перевода не введен", Fore.YELLOW)
-                return
             translation = self.trainer.translate(text)
             self.translation_result.config(text=f"Перевод на русский: {translation}")
             self.log_message(f"Перевод: '{text}' -> '{translation}'")
