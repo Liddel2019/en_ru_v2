@@ -190,8 +190,11 @@ class GUI:
             var = tk.StringVar(value=str(min_val if "min" in param else max_val if param != "n_calls" else "100"))
             self.autotest_vars[param] = var
             spinbox = ttk.Spinbox(frame, textvariable=var, from_=min_val, to=max_val, increment=increment,
-                                  width=15, formatმო�
-
+                                  width=15, format=f"%.{decimals}f" if decimals > 0 else "%d", font=("Arial", 10))
+            spinbox.grid(row=0, column=1, sticky="e")
+            spinbox.bind("<KeyRelease>", lambda event, p=param, min_v=min_val, max_v=max_val: self.validate_spinbox_input(event, p, min_v, max_v))
+            spinbox.bind("<<Increment>>", lambda event, p=param, min_v=min_val, max_v=max_val: self.validate_spinbox_input(event, p, min_v, max_v))
+            spinbox.bind("<<Decrement>>", lambda event, p=param, min_v=min_val, max_v=max_val: self.validate_spinbox_input(event, p, min_v, max_v))
         self.autotest_settings_frame.columnconfigure(0, weight=1)
 
         # Поле для выбора метрики и оптимизации
@@ -460,10 +463,6 @@ class GUI:
         self.val_loss_label.config(text="Потери на валидации: N/A")
         self.bleu_label.config(text="BLEU Score: N/A")
         self.time_label.config(text="Время обучения: N/A")
-        self.progress.set(0)
-        self.progress_label.config(text="Прогресс: 0%")
-        self.training_info.set("Эпоха: 0/0, Шаг: 0/0, Всего шагов: 0/0")
-        self.log_message("Сброс прогресса перед началом обучения", Fore.YELLOW)
 
         run_dir = f"runs/run_{self.current_run_id}"
         os.makedirs(run_dir, exist_ok=True)
@@ -483,7 +482,6 @@ class GUI:
 
         def training_thread():
             try:
-                self.log_message("Вызов метода Trainer.train", Fore.BLUE)
                 self.trainer.train(self.update_training_progress, self.metric_queue, self.current_run_id)
                 if self.current_run_id in self.runs:
                     metrics_df = pd.DataFrame(self.runs[self.current_run_id])
@@ -631,11 +629,9 @@ class GUI:
         Обновление прогресса обучения.
         """
         try:
-            self.log_message(f"Обновление прогресса: {progress:.1f}%, Эпоха: {epoch}/{total_epochs}, Шаг: {step}/{steps_per_epoch}, Всего шагов: {global_step}/{total_steps}", Fore.BLUE)
             self.progress.set(progress)
             self.progress_label.config(text=f"Прогресс: {progress:.1f}%")
             self.training_info.set(f"Эпоха: {epoch}/{total_epochs}, Шаг: {step}/{steps_per_epoch}, Всего шагов: {global_step}/{total_steps}")
-            self.root.update()  # Принудительное обновление интерфейса
         except Exception as e:
             self.log_message(f"Ошибка обновления прогресса: {str(e)}", Fore.RED)
 
