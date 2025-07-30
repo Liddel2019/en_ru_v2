@@ -9,47 +9,39 @@ from sklearn.model_selection import train_test_split
 
 init()
 
-
 class TranslationDataset(Dataset):
-    def __init__(self, data, tokenizer, max_len):
+    def __init__(self, data, tokenizer, max_len, pad_token_id):
         self.data = data
         self.tokenizer = tokenizer
         self.max_len = max_len
-        print(
-            f"===data.py===\n{Fore.BLUE}TranslationDataset инициализирован с {len(data)} примерами, max_len={max_len}{Style.RESET_ALL}")
+        self.pad_token_id = pad_token_id
+        print(f"===data.py===\n{Fore.BLUE}TranslationDataset инициализирован с {len(data)} примерами, max_len={max_len}{Style.RESET_ALL}")
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         src_text, tgt_text = self.data[idx]
-        # Токенизация исходного и целевого текста
         src_tokens = self.tokenizer.encode(src_text).ids
         tgt_tokens = self.tokenizer.encode(tgt_text).ids
 
-        # Обрезка или паддинг до max_len
         src_tokens = src_tokens[:self.max_len]
-        src_tokens += [self.tokenizer.token_to_id("[PAD]")] * (self.max_len - len(src_tokens))
+        src_tokens += [self.pad_token_id] * (self.max_len - len(src_tokens))
 
-        # Целевые токены включают [CLS] и [SEP], поэтому max_len-2 для токенов текста
         tgt_tokens = tgt_tokens[:self.max_len - 2]
         tgt_tokens = [self.tokenizer.token_to_id("[CLS]")] + tgt_tokens + [self.tokenizer.token_to_id("[SEP]")]
-        tgt_tokens += [self.tokenizer.token_to_id("[PAD]")] * (self.max_len - len(tgt_tokens))
+        tgt_tokens += [self.pad_token_id] * (self.max_len - len(tgt_tokens))
 
-        # Проверка длины последовательностей
         if len(src_tokens) != self.max_len or len(tgt_tokens) != self.max_len:
-            raise ValueError(
-                f"Ошибка: длина src_tokens={len(src_tokens)} или tgt_tokens={len(tgt_tokens)} не равна max_len={self.max_len}")
+            raise ValueError(f"Ошибка: длина src_tokens={len(src_tokens)} или tgt_tokens={len(tgt_tokens)} не равна max_len={self.max_len}")
 
         return torch.tensor(src_tokens, dtype=torch.long), torch.tensor(tgt_tokens, dtype=torch.long)
-
 
 class DataProcessor:
     def __init__(self, config):
         self.config = config
         self.length_filters = {"Short": (1, 50), "Medium": (51, 100), "Long": (101, 200)}
-        print(
-            f"===data.py===\n{Fore.BLUE}DataProcessor инициализирован с datasets_dir={self.config.datasets_dir}{Style.RESET_ALL}")
+        print(f"===data.py===\n{Fore.BLUE}DataProcessor инициализирован с datasets_dir={self.config.datasets_dir}{Style.RESET_ALL}")
 
     def check_datasets(self):
         datasets_info = {}
@@ -62,8 +54,7 @@ class DataProcessor:
                 try:
                     df = pd.read_csv(file_path, encoding='utf-8', sep=',')
                     if not {"en", "ru"}.issubset(df.columns):
-                        datasets_info[file] = {"valid": False, "num_rows": 0,
-                                               "reason": "Отсутствуют колонки 'en' или 'ru'"}
+                        datasets_info[file] = {"valid": False, "num_rows": 0, "reason": "Отсутствуют колонки 'en' или 'ru'"}
                         print(f"===data.py===\n{Fore.RED}{file}: Отсутствуют колонки{Style.RESET_ALL}")
                         continue
                     if df.empty:
@@ -75,7 +66,7 @@ class DataProcessor:
                     for _, row in df.iterrows():
                         en_text = str(row["en"]).strip()
                         ru_text = str(row["ru"]).strip()
-                        if not en_text or not ru_text:  # Проверка на пустые строки
+                        if not en_text or not ru_text:
                             continue
                         if (len(en_text) >= self.config.min_chars and len(ru_text) >= self.config.min_chars and
                                 len(en_text) <= self.config.max_chars and len(ru_text) <= self.config.max_chars and
@@ -108,11 +99,10 @@ class DataProcessor:
                     for _, row in df.iterrows():
                         en_text = str(row["en"]).strip()
                         ru_text = str(row["ru"]).strip()
-                        if not en_text or not ru_text:  # Пропуск пустых строк
+                        if not en_text or not ru_text:
                             continue
                         text_len = max(len(en_text), len(ru_text))
-                        valid_length = any(
-                            min_len <= text_len <= max_len for min_len, max_len in self.length_filters.values())
+                        valid_length = any(min_len <= text_len <= max_len for min_len, max_len in self.length_filters.values())
                         if (valid_length and
                                 len(en_text) >= self.config.min_chars and len(ru_text) >= self.config.min_chars and
                                 len(en_text) <= self.config.max_chars and len(ru_text) <= self.config.max_chars):
@@ -127,10 +117,9 @@ class DataProcessor:
 
         train_data, val_data = train_test_split(data, test_size=self.config.val_split, random_state=42)
         tokenizer = Tokenizer.from_file(self.config.tokenizer_path)
-        print(
-            f"===data.py===\n{Fore.GREEN}Тренировочный датасет загружен с {len(train_data)} примерами, Валидационный датасет с {len(val_data)} примерами{Style.RESET_ALL}")
-        return (TranslationDataset(train_data, tokenizer, self.config.max_len),
-                TranslationDataset(val_data, tokenizer, self.config.max_len))
+        print(f"===data.py===\n{Fore.GREEN}Тренировочный датасет загружен с {len(train_data)} примерами, Валидационный датасет с {len(val_data)} примерами{Style.RESET_ALL}")
+        return (TranslationDataset(train_data, tokenizer, self.config.max_len, tokenizer.token_to_id("[PAD]")),
+                TranslationDataset(val_data, tokenizer, self.config.max_len, tokenizer.token_to_id("[PAD]")))
 
     def download_dataset(self, dataset_name, url, progress_callback=None):
         from dataset_downloader import download_dataset

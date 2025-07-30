@@ -8,8 +8,10 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pandas as pd
 from colorama import init, Fore, Style
+from architecture import TransformerModel
 
 init()
+
 
 class GUI:
     def __init__(self, root, trainer, config, data_processor):
@@ -25,7 +27,7 @@ class GUI:
         self.training_info = tk.StringVar(value="Эпоха: 0/0, Шаг: 0/0, Всего шагов: 0/0")
         self.runs = {}
         self.current_run_id = None
-        self.colors = ['blue', 'orange', 'green', 'red', 'purple']
+        self.colors = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'cyan']
         self.is_running = True
         print(f"===gui.py===\n{Fore.BLUE}Инициализация интерфейса...{Style.RESET_ALL}")
 
@@ -95,7 +97,8 @@ class GUI:
 
         button_frame = ttk.Frame(self.training_frame)
         button_frame.pack(pady=10)
-        ttk.Button(button_frame, text="Обновить список датасетов", command=self.update_dataset_list).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Обновить список датасетов", command=self.update_dataset_list).pack(side="left",
+                                                                                                          padx=5)
         ttk.Button(button_frame, text="Начать обучение", command=self.start_training).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Остановить обучение", command=self.stop_training).pack(side="left", padx=5)
 
@@ -108,9 +111,14 @@ class GUI:
         self.download_list = {}
 
     def create_metrics_tab(self):
-        metric_options = ["Потери на обучении", "Потери на валидации", "BLEU Score"]
+        metric_options = [
+            "Потери на обучении", "Потери на валидации", "BLEU Score",
+            "Совпадение количества слов", "Средняя длина слова", "Частота повторения токенов",
+            "ROUGE-1", "ROUGE-L", "METEOR"
+        ]
         self.selected_metric = tk.StringVar(value=metric_options[0])
-        self.metric_dropdown = ttk.OptionMenu(self.metrics_frame, self.selected_metric, *metric_options, command=lambda _: self.update_plot())
+        self.metric_dropdown = ttk.OptionMenu(self.metrics_frame, self.selected_metric, *metric_options,
+                                              command=lambda _: self.update_plot())
         self.metric_dropdown.pack(pady=5)
 
         self.test_selection_frame = ttk.LabelFrame(self.metrics_frame, text="Выбор тестов для сравнения", padding="10")
@@ -123,9 +131,25 @@ class GUI:
         self.train_loss_label = ttk.Label(self.metric_labels_frame, text="Потери на обучении: N/A", font=("Arial", 10))
         self.val_loss_label = ttk.Label(self.metric_labels_frame, text="Потери на валидации: N/A", font=("Arial", 10))
         self.bleu_label = ttk.Label(self.metric_labels_frame, text="BLEU Score: N/A", font=("Arial", 10))
+        self.word_count_label = ttk.Label(self.metric_labels_frame, text="Совпадение количества слов: N/A",
+                                          font=("Arial", 10))
+        self.avg_word_len_label = ttk.Label(self.metric_labels_frame, text="Средняя длина слова: N/A",
+                                            font=("Arial", 10))
+        self.token_repetition_label = ttk.Label(self.metric_labels_frame, text="Частота повторения токенов: N/A",
+                                                font=("Arial", 10))
+        self.rouge_1_label = ttk.Label(self.metric_labels_frame, text="ROUGE-1: N/A", font=("Arial", 10))
+        self.rouge_l_label = ttk.Label(self.metric_labels_frame, text="ROUGE-L: N/A", font=("Arial", 10))
+        self.meteor_label = ttk.Label(self.metric_labels_frame, text="METEOR: N/A", font=("Arial", 10))
+
         self.train_loss_label.grid(row=0, column=0, padx=5, pady=2, sticky="w")
         self.val_loss_label.grid(row=1, column=0, padx=5, pady=2, sticky="w")
         self.bleu_label.grid(row=2, column=0, padx=5, pady=2, sticky="w")
+        self.word_count_label.grid(row=3, column=0, padx=5, pady=2, sticky="w")
+        self.avg_word_len_label.grid(row=4, column=0, padx=5, pady=2, sticky="w")
+        self.token_repetition_label.grid(row=5, column=0, padx=5, pady=2, sticky="w")
+        self.rouge_1_label.grid(row=6, column=0, padx=5, pady=2, sticky="w")
+        self.rouge_l_label.grid(row=7, column=0, padx=5, pady=2, sticky="w")
+        self.meteor_label.grid(row=8, column=0, padx=5, pady=2, sticky="w")
 
         self.fig, self.ax = plt.subplots(figsize=(8, 5))
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.metrics_frame)
@@ -146,16 +170,16 @@ class GUI:
         ttk.Button(self.logs_frame, text="Очистить логи", command=self.clear_logs).pack(pady=5)
 
     def create_architecture_tab(self):
-        self.architecture_frame_inner = ttk.LabelFrame(self.architecture_frame, text="Параметры архитектуры", padding="10")
+        self.architecture_frame_inner = ttk.LabelFrame(self.architecture_frame, text="Параметры архитектуры",
+                                                       padding="10")
         self.architecture_frame_inner.pack(padx=10, pady=10, fill="x")
 
         architecture_settings = [
-            ("attention_type", "Тип механизма внимания", ["scaled_dot_product", "multi_head", "additive"], "scaled_dot_product"),
-            ("normalization_type", "Тип нормализации", ["layer_norm", "batch_norm", "none"], "layer_norm"),
-            ("layer_type", "Тип слоев", ["transformer", "feed_forward", "convolutional"], "transformer"),
+            ("normalization_type", "Тип нормализации", ["layer_norm", "none"], "layer_norm"),
             ("activation", "Функция активации", ["relu", "gelu"], "gelu"),
             ("dropout", "Dropout", 0.0, 0.999, 0.01, 2),
             ("dropout_attn", "Dropout внимания", 0.0, 0.999, 0.01, 2),
+            ("dropout_lr", "Скорость обучения Dropout", 0.00001, 0.01, 0.00001, 5),
             ("ffn_dim", "Размер FFN", 64, 2048, 64, 0),
             ("norm_eps", "Эпсилон нормализации", 1e-8, 1e-4, 1e-8, 8),
         ]
@@ -168,7 +192,9 @@ class GUI:
                 ttk.Label(frame, text=label, font=("Arial", 10)).grid(row=0, column=0, sticky="w")
                 var = tk.StringVar(value=getattr(self.config, param, default))
                 self.architecture_vars[param] = var
-                ttk.OptionMenu(frame, var, default, *options, command=lambda _, p=param: self.update_architecture_param(p)).grid(row=0, column=1, sticky="e")
+                ttk.OptionMenu(frame, var, default, *options,
+                               command=lambda _, p=param: self.update_architecture_param(p)).grid(row=0, column=1,
+                                                                                                  sticky="e")
             else:
                 param, label, min_val, max_val, increment, decimals = setting
                 ttk.Label(frame, text=label, font=("Arial", 10)).grid(row=0, column=0, sticky="w")
@@ -182,31 +208,37 @@ class GUI:
                 spinbox.bind("<<Decrement>>", lambda event, p=param: self.validate_spinbox_input(event, p))
 
         self.use_learnable_dropout_var = tk.BooleanVar(value=self.config.use_learnable_dropout)
-        ttk.Checkbutton(self.architecture_frame_inner, text="Использовать обучаемый dropout", variable=self.use_learnable_dropout_var,
-                        command=lambda: self.update_architecture_param("use_learnable_dropout")).grid(row=len(architecture_settings), column=0, sticky="w", padx=5, pady=5)
+        ttk.Checkbutton(self.architecture_frame_inner, text="Использовать обучаемый dropout",
+                        variable=self.use_learnable_dropout_var,
+                        command=lambda: self.update_architecture_param("use_learnable_dropout")).grid(
+            row=len(architecture_settings), column=0, sticky="w", padx=5, pady=5)
 
         self.use_learnable_dropout_attn_var = tk.BooleanVar(value=self.config.use_learnable_dropout_attn)
-        ttk.Checkbutton(self.architecture_frame_inner, text="Использовать обучаемый dropout внимания", variable=self.use_learnable_dropout_attn_var,
-                        command=lambda: self.update_architecture_param("use_learnable_dropout_attn")).grid(row=len(architecture_settings)+1, column=0, sticky="w", padx=5, pady=5)
+        ttk.Checkbutton(self.architecture_frame_inner, text="Использовать обучаемый dropout внимания",
+                        variable=self.use_learnable_dropout_attn_var,
+                        command=lambda: self.update_architecture_param("use_learnable_dropout_attn")).grid(
+            row=len(architecture_settings) + 1, column=0, sticky="w", padx=5, pady=5)
 
         self.apply_residual_var = tk.BooleanVar(value=self.config.apply_residual)
-        ttk.Checkbutton(self.architecture_frame_inner, text="Использовать резидуальные соединения", variable=self.apply_residual_var,
-                        command=lambda: self.update_architecture_param("apply_residual")).grid(row=len(architecture_settings)+2, column=0, sticky="w", padx=5, pady=5)
+        ttk.Checkbutton(self.architecture_frame_inner, text="Использовать резидуальные соединения",
+                        variable=self.apply_residual_var,
+                        command=lambda: self.update_architecture_param("apply_residual")).grid(
+            row=len(architecture_settings) + 2, column=0, sticky="w", padx=5, pady=5)
 
         self.architecture_frame_inner.columnconfigure(0, weight=1)
 
     def create_settings_fields(self):
         settings = [
             ("batch_size", "Размер пакета", 1, 1024, 1, 0),
-            ("epochs", "Количество эпох", 1, 100, 1, 0),
-            ("learning_rate", "Скорость обучения", 0.00001, 0.01, 0.00001, 5),
-            ("max_len", "Максимальная длина", 8, 64, 1, 0),
-            ("d_model", "Размер модели", 64, 512, 8, 0),
-            ("n_heads", "Количество голов", 1, 16, 1, 0),
-            ("n_layers", "Количество слоев", 1, 12, 1, 0),
-            ("val_split", "Доля валидации", 0.1, 0.5, 0.01, 2),
-            ("min_chars", "Мин. длина предложения", 1, 100, 1, 0),
-            ("max_chars", "Макс. длина предложения", 10, 500, 10, 0),
+            ("epochs", "Количество эпох", 1, 10000, 1, 0),
+            ("learning_rate", "Скорость обучения", 0.00001, 0.1, 0.00001, 5),
+            ("max_len", "Максимальная длина", 1, 1024, 1, 0),
+            ("d_model", "Размер модели", 64, 4096, 8, 0),
+            ("n_heads", "Количество голов", 1, 64, 1, 0),
+            ("n_layers", "Количество слоев", 1, 64, 1, 0),
+            ("val_split", "Доля валидации", 0.1, 0.999, 0.01, 2),
+            ("min_chars", "Мин. длина предложения", 1, 1000, 1, 0),
+            ("max_chars", "Макс. длина предложения", 10, 5000, 10, 0),
         ]
         self.settings_vars = {}
         for i, (param, label, min_val, max_val, increment, decimals) in enumerate(settings):
@@ -235,7 +267,8 @@ class GUI:
             frame.grid(row=i, column=0, sticky="ew", padx=5, pady=5)
             var = tk.BooleanVar(value=True)
             self.filter_vars[category] = var
-            ttk.Checkbutton(frame, text=f"{category} предложения ({min_len}-{max_len} символов)", variable=var).grid(row=0, column=0, sticky="w")
+            ttk.Checkbutton(frame, text=f"{category} предложения ({min_len}-{max_len} символов)", variable=var).grid(
+                row=0, column=0, sticky="w")
         self.filter_frame.columnconfigure(0, weight=1)
 
     def validate_spinbox_input(self, event, param):
@@ -243,9 +276,12 @@ class GUI:
         if not value or value == '-':
             return
         try:
-            val = float(value) if param in ['learning_rate', 'dropout', 'val_split', 'dropout_attn', 'norm_eps'] else int(value)
-            min_val = float(event.widget.cget("from")) if '.' in str(event.widget.cget("from")) else int(event.widget.cget("from"))
-            max_val = float(event.widget.cget("to")) if '.' in str(event.widget.cget("to")) else int(event.widget.cget("to"))
+            val = float(value) if param in ['learning_rate', 'dropout', 'val_split', 'dropout_attn', 'norm_eps',
+                                            'dropout_lr'] else int(value)
+            min_val = float(event.widget.cget("from")) if '.' in str(event.widget.cget("from")) else int(
+                event.widget.cget("from"))
+            max_val = float(event.widget.cget("to")) if '.' in str(event.widget.cget("to")) else int(
+                event.widget.cget("to"))
             if min_val <= val <= max_val:
                 setattr(self.config, param, val)
                 self.log_message(f"Обновлен параметр: {param}={val}")
@@ -266,7 +302,7 @@ class GUI:
                 value = self.architecture_vars[param].get()
                 if param in ["ffn_dim", "n_heads", "n_layers"]:
                     value = int(value)
-                elif param in ["dropout", "dropout_attn", "norm_eps"]:
+                elif param in ["dropout", "dropout_attn", "norm_eps", "dropout_lr"]:
                     value = float(value)
             setattr(self.config, param, value)
             self.log_message(f"Обновлен параметр архитектуры: {param}={value}")
@@ -280,7 +316,8 @@ class GUI:
                 widget.destroy()
             for name, info in datasets_info.items():
                 var = tk.BooleanVar(value=info["valid"])
-                chk = ttk.Checkbutton(self.available_datasets_frame, text=f"{name} ({info['num_rows']} строк)", variable=var)
+                chk = ttk.Checkbutton(self.available_datasets_frame, text=f"{name} ({info['num_rows']} строк)",
+                                      variable=var)
                 chk.pack(side="top", fill="x", pady=2)
                 self.dataset_list[name] = {"var": var, "info": info}
                 self.log_message(f"Добавлен датасет: {name}")
@@ -289,7 +326,8 @@ class GUI:
                 widget.destroy()
             for name, info in datasets_info.items():
                 if "url" in info:
-                    btn = ttk.Button(self.download_frame, text=f"Скачать {name}", command=lambda n=name, u=info["url"]: self.start_download(n, u))
+                    btn = ttk.Button(self.download_frame, text=f"Скачать {name}",
+                                     command=lambda n=name, u=info["url"]: self.start_download(n, u))
                     btn.pack(side="top", fill="x", pady=2)
                     self.download_list[name] = btn
         except Exception as e:
@@ -298,7 +336,8 @@ class GUI:
     def start_download(self, dataset_name, url):
         def download_thread():
             try:
-                success, message = self.data_processor.download_dataset(dataset_name, url, self.update_download_progress)
+                success, message = self.data_processor.download_dataset(dataset_name, url,
+                                                                        self.update_download_progress)
                 self.download_queue.put((dataset_name, success, message))
             except Exception as e:
                 self.download_queue.put((dataset_name, False, f"Ошибка загрузки: {str(e)}"))
@@ -336,16 +375,39 @@ class GUI:
             while True:
                 metrics = self.metric_queue.get_nowait()
                 if self.current_run_id not in self.runs:
-                    self.runs[self.current_run_id] = {'train_loss': [], 'val_loss': [], 'bleu': []}
+                    self.runs[self.current_run_id] = {
+                        'train_loss': [], 'val_loss': [], 'bleu': [],
+                        'word_count_match': [], 'avg_word_len_match': [], 'token_repetition': [],
+                        'rouge_1': [], 'rouge_l': [], 'meteor': []
+                    }
                 self.runs[self.current_run_id]['train_loss'].append(metrics['train_loss'])
                 self.runs[self.current_run_id]['val_loss'].append(metrics['val_loss'])
                 self.runs[self.current_run_id]['bleu'].append(metrics['bleu'])
+                self.runs[self.current_run_id]['word_count_match'].append(metrics['word_count_match'])
+                self.runs[self.current_run_id]['avg_word_len_match'].append(metrics['avg_word_len_match'])
+                self.runs[self.current_run_id]['token_repetition'].append(metrics['token_repetition'])
+                self.runs[self.current_run_id]['rouge_1'].append(metrics['rouge_1'])
+                self.runs[self.current_run_id]['rouge_l'].append(metrics['rouge_l'])
+                self.runs[self.current_run_id]['meteor'].append(metrics['meteor'])
+
                 self.train_loss_label.config(text=f"Потери на обучении: {metrics['train_loss']:.4f}")
                 self.val_loss_label.config(text=f"Потери на валидации: {metrics['val_loss']:.4f}")
                 self.bleu_label.config(text=f"BLEU Score: {metrics['bleu']:.4f}")
+                self.word_count_label.config(text=f"Совпадение количества слов: {metrics['word_count_match']:.4f}")
+                self.avg_word_len_label.config(text=f"Средняя длина слова: {metrics['avg_word_len_match']:.4f}")
+                self.token_repetition_label.config(
+                    text=f"Частота повторения токенов: {metrics['token_repetition']:.4f}")
+                self.rouge_1_label.config(text=f"ROUGE-1: {metrics['rouge_1']:.4f}")
+                self.rouge_l_label.config(text=f"ROUGE-L: {metrics['rouge_l']:.4f}")
+                self.meteor_label.config(text=f"METEOR: {metrics['meteor']:.4f}")
+
                 self.update_test_selection()
                 self.update_plot()
-                self.log_message(f"Обновлены метрики: Потери (обучение: {metrics['train_loss']:.4f}, валидация: {metrics['val_loss']:.4f}), BLEU: {metrics['bleu']:.4f}")
+                self.log_message(
+                    f"Обновлены метрики: Потери (обучение: {metrics['train_loss']:.4f}, валидация: {metrics['val_loss']:.4f}), "
+                    f"BLEU: {metrics['bleu']:.4f}, WordCountMatch: {metrics['word_count_match']:.4f}, "
+                    f"AvgWordLenMatch: {metrics['avg_word_len_match']:.4f}, TokenRepetition: {metrics['token_repetition']:.4f}, "
+                    f"ROUGE-1: {metrics['rouge_1']:.4f}, ROUGE-L: {metrics['rouge_l']:.4f}, METEOR: {metrics['meteor']:.4f}")
         except queue.Empty:
             pass
         self.root.after(100, self.check_metric_queue)
@@ -370,7 +432,8 @@ class GUI:
         for run_id in self.runs:
             var = tk.BooleanVar(value=False)
             self.test_vars[run_id] = var
-            ttk.Checkbutton(self.test_selection_frame, text=f"Тест {run_id}", variable=var, command=self.update_plot).pack(side="top", fill="x", pady=2)
+            ttk.Checkbutton(self.test_selection_frame, text=f"Тест {run_id}", variable=var,
+                            command=self.update_plot).pack(side="top", fill="x", pady=2)
 
     def update_plot(self):
         self.ax.clear()
@@ -378,12 +441,19 @@ class GUI:
         metric_key = {
             'Потери на обучении': 'train_loss',
             'Потери на валидации': 'val_loss',
-            'BLEU Score': 'bleu'
+            'BLEU Score': 'bleu',
+            'Совпадение количества слов': 'word_count_match',
+            'Средняя длина слова': 'avg_word_len_match',
+            'Частота повторения токенов': 'token_repetition',
+            'ROUGE-1': 'rouge_1',
+            'ROUGE-L': 'rouge_l',
+            'METEOR': 'meteor'
         }[metric]
         has_data = False
         for idx, (run_id, run_data) in enumerate(self.runs.items()):
             if self.test_vars.get(run_id, tk.BooleanVar(value=False)).get() and run_data[metric_key]:
-                self.ax.plot(range(1, len(run_data[metric_key]) + 1), run_data[metric_key], label=f"Тест {run_id}", color=self.colors[idx % len(self.colors)])
+                self.ax.plot(range(1, len(run_data[metric_key]) + 1), run_data[metric_key], label=f"Тест {run_id}",
+                             color=self.colors[idx % len(self.colors)])
                 has_data = True
         self.ax.set_xlabel("Эпоха")
         self.ax.set_ylabel(metric)
@@ -394,10 +464,12 @@ class GUI:
         self.canvas.draw()
 
     def get_selected_filters(self):
-        return {category: (min_len, max_len) for category, (min_len, max_len) in self.length_categories.items() if self.filter_vars[category].get()}
+        return {category: (min_len, max_len) for category, (min_len, max_len) in self.length_categories.items() if
+                self.filter_vars[category].get()}
 
     def start_training(self):
-        selected_datasets = [name for name, info in self.dataset_list.items() if info["var"].get() and info["info"]["valid"]]
+        selected_datasets = [name for name, info in self.dataset_list.items() if
+                             info["var"].get() and info["info"]["valid"]]
         if not selected_datasets:
             messagebox.showwarning("Предупреждение", "Выберите хотя бы один действительный датасет!")
             self.log_message("Предупреждение: Не выбран ни один действительный датасет", Fore.YELLOW)
@@ -410,10 +482,20 @@ class GUI:
             return
 
         self.current_run_id = int(datetime.datetime.now().timestamp())
-        self.runs[self.current_run_id] = {'train_loss': [], 'val_loss': [], 'bleu': []}
+        self.runs[self.current_run_id] = {
+            'train_loss': [], 'val_loss': [], 'bleu': [],
+            'word_count_match': [], 'avg_word_len_match': [], 'token_repetition': [],
+            'rouge_1': [], 'rouge_l': [], 'meteor': []
+        }
         self.train_loss_label.config(text="Потери на обучении: N/A")
         self.val_loss_label.config(text="Потери на валидации: N/A")
         self.bleu_label.config(text="BLEU Score: N/A")
+        self.word_count_label.config(text="Совпадение количества слов: N/A")
+        self.avg_word_len_label.config(text="Средняя длина слова: N/A")
+        self.token_repetition_label.config(text="Частота повторения токенов: N/A")
+        self.rouge_1_label.config(text="ROUGE-1: N/A")
+        self.rouge_l_label.config(text="ROUGE-L: N/A")
+        self.meteor_label.config(text="METEOR: N/A")
 
         run_dir = f"runs/run_{self.current_run_id}"
         os.makedirs(run_dir, exist_ok=True)
@@ -426,8 +508,15 @@ class GUI:
 
         try:
             self.config.validate()
-            self.trainer.model = self.trainer.model.__class__(self.config)
+            self.trainer.model = TransformerModel(self.config)
             self.trainer.model.to(self.trainer.device)
+            self.trainer.dropout_params = [param for name, param in self.trainer.model.named_parameters() if
+                                           'dropout_rate' in name]
+            self.trainer.other_params = [param for name, param in self.trainer.model.named_parameters() if
+                                         'dropout_rate' not in name]
+            self.log_message(
+                f"Модель переинициализирована с use_learnable_dropout={self.config.use_learnable_dropout}, "
+                f"use_learnable_dropout_attn={self.config.use_learnable_dropout_attn}, dropout_lr={self.config.dropout_lr}")
         except Exception as e:
             self.log_message(f"Ошибка инициализации модели: {str(e)}", Fore.RED)
             return
@@ -447,7 +536,8 @@ class GUI:
         try:
             self.progress.set(progress)
             self.progress_label.config(text=f"Прогресс: {progress:.1f}%")
-            self.training_info.set(f"Эпоха: {epoch}/{total_epochs}, Шаг: {step}/{steps_per_epoch}, Всего шагов: {global_step}/{total_steps}")
+            self.training_info.set(
+                f"Эпоха: {epoch}/{total_epochs}, Шаг: {step}/{steps_per_epoch}, Всего шагов: {global_step}/{total_steps}")
         except Exception as e:
             self.log_message(f"Ошибка обновления прогресса: {str(e)}", Fore.RED)
 
